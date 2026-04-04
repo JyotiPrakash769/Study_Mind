@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StudyMind — AI-Powered Document Learning</title>
+  <meta name="description" content="Transform your study material into an interactive AI-powered learning experience with quizzes, summaries, adaptive learning, and a context-aware chatbot."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <!-- BACKGROUND GRID -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🧠</span>
+        <span class="logo-text">Study<span class="logo-accent">Mind</span></span>
+      </div>
+      <p class="logo-sub">AI-POWERED DOCUMENT LEARNING</p>
+    </div>
+    <div class="header-badge">✦ Powered by Groq AI — 100% Free, No Credit Card</div>
+  </header>
+
+  <!-- MAIN APP -->
+  <main class="app-container">
+
+    <!-- STEP 1: API KEY SETUP -->
+    <section id="setup-section" class="card api-card">
+      <div class="card-header">
+        <span class="step-badge">🔑</span>
+        <h2>Get Your Free AI API Key</h2>
+      </div>
+
+      <!-- PROVIDER TOGGLE -->
+      <div class="provider-toggle">
+        <button class="provider-btn active" id="btn-groq" onclick="setProvider('groq')">
+          ⚡ Groq <span class="provider-tag recommended">Recommended</span>
+        </button>
+        <button class="provider-btn" id="btn-gemini" onclick="setProvider('gemini')">
+          🌐 Google Gemini
+        </button>
+      </div>
+
+      <!-- GROQ INSTRUCTIONS -->
+      <div id="groq-instructions">
+        <ol class="api-steps">
+          <li>Go to <strong>console.groq.com</strong> — sign in with Google (100% free, no credit card ever)</li>
+          <li>Click <strong>"API Keys" → "Create API Key"</strong> — copy it</li>
+          <li>Paste below — you get <strong>14,400 free requests/day</strong> with Llama 3.1 70B!</li>
+        </ol>
+        <a href="https://console.groq.com/keys" target="_blank" class="btn btn-secondary" id="open-groq-btn">⚡ Open Groq Console →</a>
+      </div>
+
+      <!-- GEMINI INSTRUCTIONS -->
+      <div id="gemini-instructions" style="display:none">
+        <ol class="api-steps">
+          <li>Go to <strong>aistudio.google.com</strong> and sign in with your Google account</li>
+          <li>Click <strong>"Get API Key" → "Create API Key"</strong> — copy it</li>
+          <li>Paste below — you get <strong>1,500 free requests/day</strong></li>
+        </ol>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="btn btn-secondary" id="open-aistudio-btn">🔗 Open Google AI Studio →</a>
+      </div>
+
+      <div class="api-input-row">
+        <input type="password" id="api-key-input" placeholder="Paste your Groq API key here (gsk_...)" class="api-input"/>
+        <button id="show-key-btn" class="btn btn-outline" onclick="toggleKey()">Show</button>
+        <button id="save-key-btn" class="btn btn-primary" onclick="saveApiKey()">Save Key →</button>
+      </div>
+      <p class="api-note">🔒 Your key stays in your browser only — never sent to any server except the AI provider directly.</p>
+      <div id="key-status" class="key-status hidden"></div>
+    </section>
+
+    <!-- STEP 2: DOCUMENT UPLOAD -->
+    <section id="upload-section" class="card upload-card">
+      <div id="drop-zone" class="drop-zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+        <div class="drop-icon">📄</div>
+        <h3>Drop your study material here</h3>
+        <p class="drop-sub">PDF or plain text (.txt) — lectures, notes, textbooks, articles</p>
+        <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📂 Browse Files</button>
+        <input type="file" id="file-input" accept=".pdf,.txt" style="display:none" onchange="handleFileSelect(event)"/>
+      </div>
+      <div class="divider"><span>or paste text directly</span></div>
+      <textarea id="text-input" class="text-area" placeholder="Paste your notes, chapter, article, or any study material here..."></textarea>
+      <div class="upload-actions">
+        <div id="file-info" class="file-info hidden"></div>
+        <button id="load-doc-btn" class="btn btn-primary btn-lg" onclick="loadDocument()">Load Document →</button>
+      </div>
+    </section>
+
+    <!-- LOADING SPINNER -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="spinner"></div>
+      <p id="loading-text">Analyzing your document...</p>
+    </div>
+
+    <!-- NAVIGATION TABS (shown after doc is loaded) -->
+    <nav id="app-nav" class="app-nav hidden">
+      <button class="nav-tab active" data-tab="summary" onclick="switchTab('summary')">📋 Summary</button>
+      <button class="nav-tab" data-tab="quiz" onclick="switchTab('quiz')">🧠 Quiz</button>
+      <button class="nav-tab" data-tab="performance" onclick="switchTab('performance')">📊 Performance</button>
+      <button class="nav-tab" data-tab="studyplan" onclick="switchTab('studyplan')">🗓️ Study Plan</button>
+      <button class="nav-tab" data-tab="practice" onclick="switchTab('practice')">🔁 Practice</button>
+      <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chatbot</button>
+    </nav>
+
+    <!-- TAB: SUMMARY -->
+    <section id="tab-summary" class="tab-panel hidden">
+      <div class="panel-grid">
+        <div class="card">
+          <div class="card-title-row">
+            <h3>📋 Document Summary</h3>
+            <button class="btn btn-outline btn-sm" onclick="speakSummary()" id="voice-btn">🔊 Listen</button>
+          </div>
+          <div id="summary-content" class="prose-content">Generating summary...</div>
+        </div>
+        <div class="card">
+          <h3>🗂️ Key Topics Identified</h3>
+          <div id="topics-content" class="topics-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: QUIZ -->
+    <section id="tab-quiz" class="tab-panel hidden">
+      <div class="card quiz-settings-card">
+        <h3>⚙️ Quiz Settings</h3>
+        <div class="settings-row">
+          <div class="setting-group">
+            <label>Difficulty</label>
+            <div class="btn-group" id="difficulty-group">
+              <button class="btn btn-outline btn-sm active" data-val="basic" onclick="setDifficulty(this)">Basic</button>
+              <button class="btn btn-outline btn-sm" data-val="intermediate" onclick="setDifficulty(this)">Intermediate</button>
+              <button class="btn btn-outline btn-sm" data-val="advanced" onclick="setDifficulty(this)">Advanced</button>
+            </div>
+          </div>
+          <div class="setting-group">
+            <label>Number of Questions</label>
+            <input type="number" id="num-questions" class="setting-input" value="5" min="3" max="20"/>
+          </div>
+          <button class="btn btn-primary" onclick="generateQuiz()">🎯 Generate Quiz</button>
+        </div>
+      </div>
+      <div id="quiz-container" class="hidden">
+        <div id="quiz-questions"></div>
+        <div class="quiz-footer">
+          <button class="btn btn-primary btn-lg" onclick="submitQuiz()">📤 Submit Answers</button>
+        </div>
+      </div>
+      <div id="quiz-results" class="hidden"></div>
+    </section>
+
+    <!-- TAB: PERFORMANCE -->
+    <section id="tab-performance" class="tab-panel hidden">
+      <div class="panel-grid">
+        <div class="card">
+          <h3>📊 Overall Performance</h3>
+          <div id="perf-stats" class="perf-stats">
+            <div class="stat-box"><span id="stat-score">—</span><label>Last Score</label></div>
+            <div class="stat-box"><span id="stat-attempts">0</span><label>Attempts</label></div>
+            <div class="stat-box"><span id="stat-best">—</span><label>Best Score</label></div>
+          </div>
+          <canvas id="perf-chart" width="400" height="200"></canvas>
+        </div>
+        <div class="card">
+          <h3>⚠️ Weak Topics</h3>
+          <div id="weak-topics-list" class="weak-list">Complete a quiz to see weak topics.</div>
+          <button class="btn btn-primary mt-2" onclick="generateAdaptiveQuiz()" id="adaptive-btn" style="display:none">🔄 Adaptive Quiz on Weak Topics</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: STUDY PLAN -->
+    <section id="tab-studyplan" class="tab-panel hidden">
+      <div class="card">
+        <div class="card-title-row">
+          <h3>🗓️ Personalized Study Plan</h3>
+          <button class="btn btn-primary btn-sm" onclick="generateStudyPlan()">Generate Plan</button>
+        </div>
+        <div id="study-plan-content" class="prose-content">Click "Generate Plan" to create your personalized roadmap.</div>
+      </div>
+    </section>
+
+    <!-- TAB: PRACTICE -->
+    <section id="tab-practice" class="tab-panel hidden">
+      <div class="card">
+        <div class="card-title-row">
+          <h3>🔁 Practice & Reinforcement</h3>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <select id="practice-topic" class="setting-input" style="min-width:160px;"></select>
+            <button class="btn btn-primary btn-sm" onclick="generatePractice()">Generate</button>
+          </div>
+        </div>
+        <div id="practice-content" class="prose-content">Select a topic and generate practice questions.</div>
+      </div>
+    </section>
+
+    <!-- TAB: CHAT -->
+    <section id="tab-chat" class="tab-panel hidden">
+      <div class="card chat-card">
+        <div class="chat-header">
+          <h3>💬 Ask Your Document</h3>
+          <span class="chat-badge">Answers based on your document only</span>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chat-input" class="api-input" placeholder="Ask anything about your document..." onkeydown="if(event.key==='Enter') sendChat()"/>
+          <button class="btn btn-primary" onclick="sendChat()">Send →</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

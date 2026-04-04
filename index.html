@@ -210,8 +210,17 @@
     <section id="tab-chat" class="tab-panel hidden">
       <div class="card chat-card">
         <div class="chat-header">
-          <h3>💬 Ask Your Document</h3>
-          <span class="chat-badge">Answers based on your document only</span>
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <h3>💬 Ask Your Document</h3>
+            <span class="chat-badge">Answers based on your document only</span>
+          </div>
+          <div class="socratic-toggle-wrapper">
+            <label class="switch">
+              <input type="checkbox" id="socratic-toggle" onchange="toggleSocraticMode()">
+              <span class="slider round"></span>
+            </label>
+            <span class="socratic-label" id="socratic-label">Socratic Tutor</span>
+          </div>
         </div>
         <div id="chat-messages" class="chat-messages"></div>
         <div class="chat-input-row">

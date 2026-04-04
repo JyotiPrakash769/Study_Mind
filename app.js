@@ -740,7 +740,12 @@ async function sendChat() {
 
   const historyContext = State.chatHistory.slice(-6).map(h => `${h.role === 'user' ? 'Student' : 'Tutor'}: ${h.content}`).join('\n');
 
-  const prompt = `You are a virtual tutor for a student studying the following document. Answer ONLY based on information found in the document. If the answer is not in the document, say so politely.
+  const isSocratic = document.getElementById('socratic-toggle').checked;
+  const sysPrompt = isSocratic
+    ? `You are a Socratic tutor. Guide the student by asking probing questions and giving hints based on the document. DO NOT give direct answers immediately. Encourage them to think.`
+    : `You are a virtual tutor. Answer ONLY based on information found in the document. If the answer is not in the document, say so politely.`;
+
+  const prompt = `${sysPrompt}
 
 DOCUMENT CONTENT:
 ${State.docText.substring(0, 5000)}
@@ -750,7 +755,7 @@ ${historyContext}
 
 Student's question: ${question}
 
-Provide a clear, helpful answer based strictly on the document content:`;
+Provide a clear, helpful response based strictly on the document content:`;
 
   try {
     const answer = await callAI(prompt, 800);
@@ -760,6 +765,18 @@ Provide a clear, helpful answer based strictly on the document content:`;
   } catch (err) {
     typing.remove();
     appendChat('Sorry, I encountered an error: ' + err.message, 'bot');
+  }
+}
+
+function toggleSocraticMode() {
+  const isSocratic = document.getElementById('socratic-toggle').checked;
+  const label = document.getElementById('socratic-label');
+  if (isSocratic) {
+    label.style.color = 'var(--green)';
+    showToast('🧠 Socratic Mode ON: I will guide you with questions.');
+  } else {
+    label.style.color = 'var(--text-muted)';
+    showToast('💬 Socratic Mode OFF: Direct answers restored.');
   }
 }
 

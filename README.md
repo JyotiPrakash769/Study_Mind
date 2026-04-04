@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![No Backend](https://img.shields.io/badge/Backend-None_(Browser_Only)-orange?style=for-the-badge)]()
 
-![StudyMind Screenshot](assets/screenshot.png)
+![StudyMind Split Screen Workspace](assets/split_screen.png)
 
 </div>
 
@@ -170,9 +170,9 @@ Host StudyMind publicly for free so anyone can use it:
 
 ## 📸 Screenshots
 
-| Setup Screen | Document Upload |
+| Setup Screen | Split-Screen Workspace |
 |-------------|----------------|
-| ![Setup](assets/screenshot.png) | ![Upload](assets/screenshot.png) |
+| ![Setup](assets/screenshot.png) | ![Workspace](assets/split_screen.png) |
 
 ---
 

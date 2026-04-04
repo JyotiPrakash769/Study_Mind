@@ -11,18 +11,36 @@ if (typeof pdfjsLib !== 'undefined') {
 // ── State ────────────────────────────────────────────────────
 const State = {
   apiKey: '',
-  provider: 'groq',   // 'groq' | 'gemini'
+  provider: 'groq',
   docText: '',
   topics: [],
   difficulty: 'basic',
   quizQuestions: [],
   quizResults: [],
-  performance: { attempts: 0, best: null, history: [], topicScores: {} },
+  performance: { attempts: 0, best: null, history: [], topicScores: {}, bloomScores: {} },
+  srsData: {},      // topic -> { interval, easeFactor, repetitions, dueDate }
+  flashcards: [],
+  fcIndex: 0,
+  fcFlipped: false,
+  fcSession: { got: 0, review: 0 },
   chatHistory: [],
-  voiceEnabled: false,
   speechSynth: window.speechSynthesis || null,
   speaking: false,
 };
+
+// ── BLOOM CONFIG ─────────────────────────────────────────────
+const BLOOM = {
+  remember:   { label: 'Remember',   color: '#60a5fa', cls: 'bloom-remember'   },
+  understand: { label: 'Understand', color: '#a78bfa', cls: 'bloom-understand' },
+  apply:      { label: 'Apply',      color: '#4ade80', cls: 'bloom-apply'      },
+  analyze:    { label: 'Analyze',    color: '#fbbf24', cls: 'bloom-analyze'    },
+  evaluate:   { label: 'Evaluate',   color: '#fb923c', cls: 'bloom-evaluate'   },
+  create:     { label: 'Create',     color: '#f87171', cls: 'bloom-create'     },
+};
+function bloomBadge(level) {
+  const b = BLOOM[level?.toLowerCase()] || BLOOM.remember;
+  return `<span class="bloom-badge ${b.cls}">${b.label}</span>`;
+}
 
 // ── INIT ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -34,6 +52,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('api-key-input').value = saved;
     showKeyStatus('✅ API key loaded from storage', 'success');
   }
+  loadState();   // restore performance & SRS from previous sessions
   setupDragDrop();
 });
 
@@ -124,14 +143,12 @@ function saveApiKey() {
   showToast(label);
 }
 
-// ── UNIFIED AI CALL (Groq or Gemini) ─────────────────────────
+// ── UNIFIED AI CALL ───────────────────────────────────────────
 async function callAI(prompt, maxTokens = 2048) {
   if (!State.apiKey) { showToast('⚠️ Please save your API key first!'); throw new Error('No API key'); }
-  if (State.provider === 'groq') {
-    return await callGroq(prompt, maxTokens);
-  } else {
-    return await callAI(prompt, maxTokens);
-  }
+  return State.provider === 'groq'
+    ? await callGroq(prompt, maxTokens)
+    : await callGemini(prompt, maxTokens);
 }
 
 async function callGroq(prompt, maxTokens = 2048) {
@@ -324,25 +341,31 @@ async function generateQuiz() {
   showLoading(`Generating ${n} ${State.difficulty} questions...`);
 
   const diffInstructions = {
-    basic: 'Focus on definitions, facts, and basic recall. Use multiple-choice questions.',
-    intermediate: 'Focus on understanding and application. Mix MCQ and short-answer questions.',
-    advanced: 'Focus on analysis, synthesis, and critical thinking. Use primarily open-ended questions.',
+    basic:        'Focus on Remember and Understand levels (definitions, facts, recall).',
+    intermediate: 'Focus on Apply and Analyze levels (application, comparison, problem solving).',
+    advanced:     'Focus on Evaluate and Create levels (critique, design, synthesis).',
+  };
+  const bloomForDiff = {
+    basic: ['remember','understand'],
+    intermediate: ['apply','analyze'],
+    advanced: ['evaluate','create'],
   };
 
   const weakTopics = Object.entries(State.performance.topicScores)
-    .filter(([, s]) => s < 60).map(([t]) => t);
-  const focusNote = weakTopics.length > 0
-    ? `Prioritize these weak topics: ${weakTopics.join(', ')}.` : '';
+    .filter(([, s]) => { const a = Array.isArray(s)?s:[s]; return Math.round(a.reduce((x,y)=>x+y,0)/a.length) < 60; })
+    .map(([t]) => t);
+  const focusNote = weakTopics.length > 0 ? `Prioritize these weak topics: ${weakTopics.join(', ')}.` : '';
 
-  const prompt = `You are a quiz generator. Create exactly ${n} questions from the study material below.
+  const prompt = `You are an expert quiz generator aligned with Bloom's Taxonomy. Create exactly ${n} questions from the study material.
 Difficulty: ${State.difficulty}. ${diffInstructions[State.difficulty]}
 ${focusNote}
 
-Return ONLY valid JSON array in this format:
+Return ONLY a valid JSON array:
 [
   {
     "id": 1,
     "topic": "topic name",
+    "bloom_level": "remember",
     "type": "mcq",
     "question": "...",
     "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
@@ -351,11 +374,13 @@ Return ONLY valid JSON array in this format:
   {
     "id": 2,
     "topic": "topic name",
+    "bloom_level": "apply",
     "type": "short",
     "question": "...",
     "answer": "expected answer"
   }
 ]
+bloom_level must be one of: remember, understand, apply, analyze, evaluate, create.
 
 STUDY MATERIAL:
 ${State.docText.substring(0, 5000)}`;
@@ -364,7 +389,6 @@ ${State.docText.substring(0, 5000)}`;
     const raw = await callAI(prompt, 2048);
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('Invalid quiz response');
-
     State.quizQuestions = JSON.parse(jsonMatch[0]);
     renderQuiz();
     hideLoading();
@@ -378,6 +402,7 @@ ${State.docText.substring(0, 5000)}`;
 function renderQuiz() {
   const container = document.getElementById('quiz-questions');
   container.innerHTML = State.quizQuestions.map((q, i) => {
+    const badge = bloomBadge(q.bloom_level);
     if (q.type === 'mcq') {
       const opts = (q.options || []).map((opt, oi) => `
         <label class="quiz-option" id="opt-${i}-${oi}">
@@ -385,19 +410,18 @@ function renderQuiz() {
           ${escapeHtml(opt)}
         </label>`).join('');
       return `<div class="quiz-q-card">
-        <div class="q-number">Q${i + 1} · ${escapeHtml(q.topic || '')} · MCQ</div>
+        <div class="quiz-q-meta"><span class="q-number-label">Q${i+1} · ${escapeHtml(q.topic||'')} · MCQ</span>${badge}</div>
         <div class="q-text">${escapeHtml(q.question)}</div>
         <div class="quiz-options">${opts}</div>
       </div>`;
     } else {
       return `<div class="quiz-q-card">
-        <div class="q-number">Q${i + 1} · ${escapeHtml(q.topic || '')} · Short Answer</div>
+        <div class="quiz-q-meta"><span class="q-number-label">Q${i+1} · ${escapeHtml(q.topic||'')} · Short Answer</span>${badge}</div>
         <div class="q-text">${escapeHtml(q.question)}</div>
         <input type="text" class="quiz-short-input" id="short-${i}" placeholder="Type your answer..."/>
       </div>`;
     }
   }).join('');
-
   document.getElementById('quiz-container').classList.remove('hidden');
   document.getElementById('quiz-results').classList.add('hidden');
 }
@@ -442,26 +466,39 @@ Feedback should explain why the answer is right/wrong/partial in 1-2 sentences.`
     const evaluation = JSON.parse(jsonMatch[0]);
     State.quizResults = evaluation;
 
-    // Update performance
     const totalScore = evaluation.reduce((s, r) => s + (r.score || 0), 0) / evaluation.length;
     State.performance.attempts++;
     State.performance.history.push(Math.round(totalScore));
-    if (State.performance.best === null || totalScore > State.performance.best) {
+    if (State.performance.best === null || totalScore > State.performance.best)
       State.performance.best = Math.round(totalScore);
-    }
 
     // Update topic scores
     evaluation.forEach(r => {
       if (!r.topic) return;
-      if (!State.performance.topicScores[r.topic]) State.performance.topicScores[r.topic] = [];
-      if (!Array.isArray(State.performance.topicScores[r.topic])) {
-        State.performance.topicScores[r.topic] = [State.performance.topicScores[r.topic]];
-      }
+      if (!Array.isArray(State.performance.topicScores[r.topic]))
+        State.performance.topicScores[r.topic] = [];
       State.performance.topicScores[r.topic].push(r.score || 0);
+    });
+
+    // Update bloom scores
+    State.quizQuestions.forEach((q, i) => {
+      const level = (q.bloom_level || 'remember').toLowerCase();
+      const score = evaluation[i]?.score || 0;
+      if (!Array.isArray(State.performance.bloomScores[level]))
+        State.performance.bloomScores[level] = [];
+      State.performance.bloomScores[level].push(score);
+    });
+
+    // Update SRS for each topic based on score
+    evaluation.forEach(r => {
+      if (!r.topic) return;
+      const quality = r.score >= 80 ? 5 : r.score >= 50 ? 3 : 1;
+      updateSRS(r.topic, quality);
     });
 
     renderResults(evaluation, Math.round(totalScore), userAnswers);
     updatePerformanceTab(Math.round(totalScore));
+    saveState();
     hideLoading();
     showToast(`Quiz done! Score: ${Math.round(totalScore)}%`);
   } catch (err) {
@@ -504,10 +541,11 @@ function renderResults(evaluation, totalScore, userAnswers) {
 function updatePerformanceTab(lastScore) {
   document.getElementById('stat-score').textContent = lastScore + '%';
   document.getElementById('stat-attempts').textContent = State.performance.attempts;
-  document.getElementById('stat-best').textContent = State.performance.best + '%';
-
+  document.getElementById('stat-best').textContent = (State.performance.best ?? '—') + '%';
   drawChart();
   renderWeakTopics();
+  renderBloomBreakdown();
+  renderSRSDue();
 }
 
 function drawChart() {
@@ -724,3 +762,254 @@ Provide a clear, helpful answer based strictly on the document content:`;
     appendChat('Sorry, I encountered an error: ' + err.message, 'bot');
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 1 — PROGRESS PERSISTENCE
+// ══════════════════════════════════════════════════════════════
+function saveState() {
+  try {
+    localStorage.setItem('sm_performance', JSON.stringify(State.performance));
+    localStorage.setItem('sm_srs', JSON.stringify(State.srsData));
+  } catch (e) { console.warn('Could not save state:', e); }
+}
+
+function loadState() {
+  try {
+    const perf = localStorage.getItem('sm_performance');
+    if (perf) {
+      const p = JSON.parse(perf);
+      State.performance = { attempts:0, best:null, history:[], topicScores:{}, bloomScores:{}, ...p };
+    }
+    const srs = localStorage.getItem('sm_srs');
+    if (srs) State.srsData = JSON.parse(srs);
+
+    // Refresh performance tab if there's data
+    if (State.performance.attempts > 0) {
+      const last = State.performance.history.slice(-1)[0] ?? 0;
+      updatePerformanceTab(last);
+    }
+  } catch (e) { console.warn('Could not load state:', e); }
+}
+
+function resetProgress() {
+  if (!confirm('Reset all quiz history, scores, and SRS data? This cannot be undone.')) return;
+  State.performance = { attempts: 0, best: null, history: [], topicScores: {}, bloomScores: {} };
+  State.srsData = {};
+  localStorage.removeItem('sm_performance');
+  localStorage.removeItem('sm_srs');
+  document.getElementById('stat-score').textContent = '—';
+  document.getElementById('stat-attempts').textContent = '0';
+  document.getElementById('stat-best').textContent = '—';
+  document.getElementById('weak-topics-list').innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">Complete a quiz to see weak topics.</p>';
+  document.getElementById('srs-due-section').classList.add('hidden');
+  const bc = document.getElementById('bloom-breakdown-container');
+  if (bc) bc.innerHTML = '';
+  renderTopics();
+  showToast('🗑️ Progress reset successfully.');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 2 — SM-2 SPACED REPETITION
+// ══════════════════════════════════════════════════════════════
+function sm2(quality, repetitions, easeFactor, interval) {
+  // SM-2 Algorithm (Wozniak, 1987) — quality: 0 (blackout) to 5 (perfect)
+  if (quality >= 3) {
+    if (repetitions === 0) interval = 1;
+    else if (repetitions === 1) interval = 6;
+    else interval = Math.round(interval * easeFactor);
+    repetitions++;
+  } else {
+    repetitions = 0;
+    interval = 1;
+  }
+  easeFactor = Math.max(1.3, easeFactor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + interval);
+  return { repetitions, easeFactor, interval, dueDate: dueDate.toISOString() };
+}
+
+function updateSRS(topic, quality) {
+  const existing = State.srsData[topic] || { repetitions: 0, easeFactor: 2.5, interval: 1, dueDate: null };
+  State.srsData[topic] = sm2(quality, existing.repetitions, existing.easeFactor, existing.interval);
+}
+
+function renderSRSDue() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = Object.entries(State.srsData).filter(([, d]) => {
+    if (!d.dueDate) return false;
+    const dd = new Date(d.dueDate); dd.setHours(0,0,0,0);
+    return dd <= today;
+  });
+
+  const section = document.getElementById('srs-due-section');
+  const list = document.getElementById('srs-due-list');
+  if (due.length === 0) { section.classList.add('hidden'); return; }
+
+  section.classList.remove('hidden');
+  list.innerHTML = due.map(([topic, d]) => `
+    <div class="weak-item" style="cursor:pointer" onclick="quickPractice('${escapeHtml(topic)}')">
+      <span class="topic-name">${escapeHtml(topic)}</span>
+      <span class="srs-badge">📅 Review Due</span>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 3 — BLOOM'S TAXONOMY PERFORMANCE BREAKDOWN
+// ══════════════════════════════════════════════════════════════
+function renderBloomBreakdown() {
+  // Inject bloom breakdown section if not present
+  let container = document.getElementById('bloom-breakdown-container');
+  if (!container) {
+    const perfCard = document.querySelector('#tab-performance .card');
+    if (!perfCard) return;
+    container = document.createElement('div');
+    container.id = 'bloom-breakdown-container';
+    perfCard.appendChild(container);
+  }
+
+  const bloomEntries = Object.entries(BLOOM);
+  const hasData = bloomEntries.some(([k]) => State.performance.bloomScores[k]?.length > 0);
+  if (!hasData) { container.innerHTML = ''; return; }
+
+  const rows = bloomEntries.map(([key, cfg]) => {
+    const scores = State.performance.bloomScores[key] || [];
+    const avg = scores.length
+      ? Math.round(scores.reduce((a,b) => a+b, 0) / scores.length)
+      : null;
+    if (avg === null) return '';
+    return `<div class="bloom-row">
+      <span class="bloom-label"><span class="bloom-badge ${cfg.cls}" style="font-size:0.65rem">${cfg.label}</span></span>
+      <div class="bloom-bar-wrap"><div class="bloom-bar-fill" style="width:${avg}%;background:${cfg.color}"></div></div>
+      <span class="bloom-pct">${avg}%</span>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+      <h4 style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.6rem">🧠 Bloom's Taxonomy Breakdown</h4>
+      <div class="bloom-breakdown">${rows}</div>
+    </div>
+    <button class="btn btn-outline btn-sm" style="margin-top:1rem" onclick="resetProgress()">🗑️ Reset Progress</button>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 4 — FLASHCARD MODE (Anki-Style with SM-2)
+// ══════════════════════════════════════════════════════════════
+async function generateFlashcards() {
+  if (!State.docText) { showToast('Please load a document first.'); return; }
+  showLoading('Generating AI flashcards...');
+
+  const prompt = `You are a flashcard generator using Bloom's Taxonomy. Create 15 flashcards from the study material below.
+
+Return ONLY a valid JSON array:
+[
+  {
+    "id": 1,
+    "question": "What is ...?",
+    "answer": "...",
+    "bloom_level": "remember",
+    "topic": "topic name"
+  }
+]
+bloom_level must be one of: remember, understand, apply, analyze, evaluate, create.
+Mix all 6 levels. Keep answers concise (1-3 sentences).
+
+STUDY MATERIAL:
+${State.docText.substring(0, 5000)}`;
+
+  try {
+    const raw = await callAI(prompt, 2000);
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('Invalid flashcard response');
+    State.flashcards = JSON.parse(jsonMatch[0]);
+    State.fcIndex = 0;
+    State.fcFlipped = false;
+    State.fcSession = { got: 0, review: 0 };
+    renderFlashcards();
+    hideLoading();
+    showToast(`✅ ${State.flashcards.length} flashcards ready!`);
+  } catch (err) {
+    hideLoading();
+    showToast('❌ Error: ' + err.message);
+  }
+}
+
+function renderFlashcards() {
+  const cards = State.flashcards;
+  if (!cards.length) return;
+  document.getElementById('fc-generate-hint').classList.add('hidden');
+  document.getElementById('fc-container').classList.remove('hidden');
+  document.getElementById('fc-session-stats').classList.add('hidden');
+  document.getElementById('fc-counter').classList.remove('hidden');
+  document.getElementById('fc-total').textContent = cards.length;
+  showCard(State.fcIndex);
+  updateDots();
+}
+
+function showCard(idx) {
+  const card = State.flashcards[idx];
+  if (!card) return;
+  State.fcIndex = idx;
+  State.fcFlipped = false;
+  document.getElementById('fc-card').classList.remove('flipped');
+  document.getElementById('fc-question').textContent = card.question;
+  document.getElementById('fc-answer').textContent = card.answer;
+  document.getElementById('fc-bloom-badge').className = `bloom-badge ${BLOOM[card.bloom_level?.toLowerCase()]?.cls || 'bloom-remember'}`;
+  document.getElementById('fc-bloom-badge').textContent = BLOOM[card.bloom_level?.toLowerCase()]?.label || 'Remember';
+  document.getElementById('fc-cur').textContent = idx + 1;
+  updateDots();
+}
+
+function flipCard() {
+  State.fcFlipped = !State.fcFlipped;
+  document.getElementById('fc-card').classList.toggle('flipped', State.fcFlipped);
+}
+
+function nextCard() {
+  if (State.fcIndex < State.flashcards.length - 1) showCard(State.fcIndex + 1);
+}
+
+function prevCard() {
+  if (State.fcIndex > 0) showCard(State.fcIndex - 1);
+}
+
+function rateCard(quality) {
+  // quality: 1=hard, 3=ok, 5=easy (maps to SM-2)
+  const card = State.flashcards[State.fcIndex];
+  if (!card) return;
+
+  // Update SM-2 for this topic
+  updateSRS(card.topic || card.question.substring(0,30), quality);
+  saveState();
+
+  // Track session stats
+  if (quality >= 3) State.fcSession.got++;
+  else State.fcSession.review++;
+  document.getElementById('fc-got').textContent = State.fcSession.got;
+  document.getElementById('fc-review').textContent = State.fcSession.review;
+
+  // Mark dot as done
+  const dots = document.querySelectorAll('.fc-dot');
+  if (dots[State.fcIndex]) {
+    dots[State.fcIndex].classList.add('done');
+    dots[State.fcIndex].classList.remove('active');
+  }
+
+  // Move to next or show summary
+  if (State.fcIndex < State.flashcards.length - 1) {
+    showCard(State.fcIndex + 1);
+    document.getElementById('fc-session-stats').classList.remove('hidden');
+  } else {
+    document.getElementById('fc-session-stats').classList.remove('hidden');
+    showToast(`\uD83C\uDF89 Done! Got ${State.fcSession.got}, Review ${State.fcSession.review}`);
+  }
+}
+
+function updateDots() {
+  const container = document.getElementById('fc-progress-dots');
+  const max = Math.min(State.flashcards.length, 15);
+  container.innerHTML = Array.from({ length: max }, (_, i) =>
+    `<div class="fc-dot${i === State.fcIndex ? ' active' : ''}" onclick="showCard(${i})"></div>`
+  ).join('');
+}
+

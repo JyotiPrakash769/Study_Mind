@@ -786,11 +786,14 @@ Provide a clear, helpful response based strictly on the document text:`;
 
 function scrollToPage(pageNum) {
   if (!State.fileBlobUrl) return;
-  const iframe = document.getElementById('pdf-viewer');
-  if (iframe) {
-    // Changing the hash triggers PDF.js/internal viewer navigation
-    iframe.src = State.fileBlobUrl + '#page=' + pageNum + '&navpanes=0&toolbar=0&view=FitH';
-    showToast(`📄 Scrolled to page ${pageNum}`);
+  const oldIframe = document.getElementById('pdf-viewer');
+  const container = document.getElementById('pdf-pane');
+  if (oldIframe && container) {
+    // Replacing the iframe completely forces the native PDF engine to jump to the new hash on Blob URLs
+    const newIframe = oldIframe.cloneNode(true);
+    newIframe.src = State.fileBlobUrl + '#page=' + pageNum + '&navpanes=0&toolbar=0&view=FitH';
+    container.replaceChild(newIframe, oldIframe);
+    showToast(`📄 Jumped to page ${pageNum}`);
   }
 }
 

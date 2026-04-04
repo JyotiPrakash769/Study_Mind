@@ -773,6 +773,7 @@ Provide a clear, helpful response based strictly on the document text:`;
       const pageNum = pageMatch[1];
       scrollToPage(pageNum);
       displayAnswer = rawAnswer.replace(/\[PAGE:\s*\d+\]/ig, '').trim();
+      displayAnswer += `\n\n<button class="btn btn-outline btn-sm" style="margin-top:0.6rem" onclick="scrollToPage(${pageNum})">📄 View Source (Page ${pageNum})</button>`;
     }
 
     appendChat(displayAnswer, 'bot');

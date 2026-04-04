@@ -277,12 +277,17 @@ body {
 .topics-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .topic-chip {
   padding: 0.35rem 0.85rem; border-radius: 999px;
-  background: var(--green-glow); border: 1px solid var(--border2);
-  color: var(--green); font-size: 0.8rem; font-weight: 500;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 0.8rem; font-weight: 500;
   cursor: pointer; transition: all var(--transition); user-select: none;
 }
-.topic-chip:hover { background: rgba(74,222,128,0.2); transform: scale(1.03); }
+.topic-chip:hover { background: rgba(255,255,255,0.1); transform: scale(1.03); }
+.topic-chip.good { background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.35); color: var(--green); }
+.topic-chip.good:hover { background: rgba(74,222,128,0.2); }
+.topic-chip.medium { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.35); color: var(--yellow); }
+.topic-chip.medium:hover { background: rgba(251,191,36,0.2); }
 .topic-chip.weak { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.35); color: var(--red); }
+.topic-chip.weak:hover { background: rgba(248,113,113,0.2); }
 
 /* QUIZ */
 .quiz-settings-card { }

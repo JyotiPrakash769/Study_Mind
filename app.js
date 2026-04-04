@@ -281,6 +281,7 @@ ${text.substring(0, 6000)}`;
     document.getElementById('summary-content').innerHTML = formatMarkdown(parsed.summary || 'No summary generated.');
     renderTopics();
     populatePracticeTopic();
+    renderWeakTopics(); // Colorize them immediately using historical data
 
     document.getElementById('setup-container').classList.add('hidden');
     document.getElementById('workspace').classList.remove('hidden');
@@ -614,6 +615,17 @@ function renderWeakTopics() {
     return { topic, avg };
   }).sort((a, b) => a.avg - b.avg);
 
+  // Update ALL topic chips globally (in Summary tab, etc.)
+  document.querySelectorAll('.topic-chip').forEach(chip => {
+    const topicData = topics.find(t => t.topic === chip.textContent.trim());
+    chip.classList.remove('good', 'medium', 'weak');
+    if (topicData) {
+      if (topicData.avg >= 80) chip.classList.add('good');
+      else if (topicData.avg >= 60) chip.classList.add('medium');
+      else chip.classList.add('weak');
+    }
+  });
+
   if (topics.length === 0) {
     container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem;">Complete a quiz to see weak topics.</p>';
     return;
@@ -630,13 +642,6 @@ function renderWeakTopics() {
   const hasWeak = topics.some(t => t.avg < 60);
   const btn = document.getElementById('adaptive-btn');
   if (btn) btn.style.display = hasWeak ? 'inline-flex' : 'none';
-
-  // Update topic chips with weak styling
-  document.querySelectorAll('.topic-chip').forEach(chip => {
-    const topic = topics.find(t => t.topic === chip.textContent.trim());
-    if (topic && topic.avg < 60) chip.classList.add('weak');
-    else chip.classList.remove('weak');
-  });
 }
 
 async function generateAdaptiveQuiz() {

@@ -12,6 +12,7 @@ if (typeof pdfjsLib !== 'undefined') {
 const State = {
   apiKey: '',
   provider: 'groq',
+  fileBlobUrl: null,
   docText: '',
   topics: [],
   difficulty: 'basic',
@@ -218,13 +219,18 @@ async function processFile(file) {
   if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
     showLoading('Extracting text from PDF...');
     try {
+      if (State.fileBlobUrl) URL.revokeObjectURL(State.fileBlobUrl);
+      State.fileBlobUrl = URL.createObjectURL(file);
+      document.getElementById('pdf-title').textContent = file.name;
+      document.getElementById('pdf-viewer').src = State.fileBlobUrl + '#navpanes=0&toolbar=0&view=FitH';
+
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
       let text = '';
       for (let i = 1; i <= Math.min(pdf.numPages, 40); i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(' ') + '\n';
+        text += `\n[--- PAGE ${i} ---]\n` + content.items.map(item => item.str).join(' ') + '\n';
       }
       document.getElementById('text-input').value = text.trim();
       hideLoading();
@@ -276,9 +282,8 @@ ${text.substring(0, 6000)}`;
     renderTopics();
     populatePracticeTopic();
 
-    document.getElementById('app-nav').classList.remove('hidden');
-    document.getElementById('upload-section').classList.add('hidden');
-    document.getElementById('setup-section').classList.add('hidden');
+    document.getElementById('setup-container').classList.add('hidden');
+    document.getElementById('workspace').classList.remove('hidden');
     switchTab('summary');
 
     hideLoading();
@@ -737,7 +742,6 @@ async function sendChat() {
   State.chatHistory.push({ role: 'user', content: question });
 
   const typing = appendChat('Thinking...', 'bot typing');
-
   const historyContext = State.chatHistory.slice(-6).map(h => `${h.role === 'user' ? 'Student' : 'Tutor'}: ${h.content}`).join('\n');
 
   const isSocratic = document.getElementById('socratic-toggle').checked;
@@ -746,25 +750,46 @@ async function sendChat() {
     : `You are a virtual tutor. Answer ONLY based on information found in the document. If the answer is not in the document, say so politely.`;
 
   const prompt = `${sysPrompt}
+IMPORTANT: Whenever you draw information from a specific page, you MUST end your entire response with a reference marker like so: [PAGE: 4]. Use the [--- PAGE X ---] markers in the document to know which page you are on.
 
 DOCUMENT CONTENT:
-${State.docText.substring(0, 5000)}
+${State.docText.substring(0, 10000)}
 
 CONVERSATION HISTORY:
 ${historyContext}
 
 Student's question: ${question}
 
-Provide a clear, helpful response based strictly on the document content:`;
+Provide a clear, helpful response based strictly on the document text:`;
 
   try {
-    const answer = await callAI(prompt, 800);
+    const rawAnswer = await callAI(prompt, 800);
     typing.remove();
-    appendChat(answer, 'bot');
-    State.chatHistory.push({ role: 'bot', content: answer });
+    let displayAnswer = rawAnswer;
+    
+    // Parse page marker [PAGE: X]
+    const pageMatch = rawAnswer.match(/\[PAGE:\s*(\d+)\]/i);
+    if (pageMatch && State.fileBlobUrl) {
+      const pageNum = pageMatch[1];
+      scrollToPage(pageNum);
+      displayAnswer = rawAnswer.replace(/\[PAGE:\s*\d+\]/ig, '').trim();
+    }
+
+    appendChat(displayAnswer, 'bot');
+    State.chatHistory.push({ role: 'bot', content: displayAnswer });
   } catch (err) {
     typing.remove();
     appendChat('Sorry, I encountered an error: ' + err.message, 'bot');
+  }
+}
+
+function scrollToPage(pageNum) {
+  if (!State.fileBlobUrl) return;
+  const iframe = document.getElementById('pdf-viewer');
+  if (iframe) {
+    // Changing the hash triggers PDF.js/internal viewer navigation
+    iframe.src = State.fileBlobUrl + '#page=' + pageNum + '&navpanes=0&toolbar=0&view=FitH';
+    showToast(`📄 Scrolled to page ${pageNum}`);
   }
 }
 

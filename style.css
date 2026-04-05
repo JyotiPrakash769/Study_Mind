@@ -706,17 +706,29 @@ body {
   .right-pane { overflow-y: visible; }
 }
 
+/* Force Mobile View Mode */
+body.force-mobile .workspace-split { flex-direction: column; height: auto; }
+body.force-mobile .sidebar-nav { width: 100%; }
+body.force-mobile .app-nav { flex-direction: row; flex-wrap: wrap; padding-top: 0; }
+body.force-mobile .nav-tab { flex: 1; text-align: center; justify-content: center; }
+body.force-mobile .left-pane { max-width: none; height: 600px; min-width: 0; }
+body.force-mobile .right-pane { overflow-y: visible; }
 
-/* THEME TOGGLE BUTTON */
-.theme-toggle-btn {
-  position: absolute; right: 1.5rem; top: 1.5rem;
+
+
+/* TOGGLE BUTTONS */
+.theme-toggle-btn, .device-toggle-btn {
+  position: absolute; top: 1.5rem;
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); border-radius: 50%;
   width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
   font-size: 1.2rem; cursor: pointer; transition: all var(--transition);
   box-shadow: var(--shadow); z-index: 100;
 }
-.theme-toggle-btn:hover { background: var(--primary-glow); transform: scale(1.05); }
+.theme-toggle-btn { right: 1.5rem; }
+.device-toggle-btn { left: 1.5rem; }
+
+.theme-toggle-btn:hover, .device-toggle-btn:hover { background: var(--primary-glow); transform: scale(1.05); }
 
 /* MERMAID & CHEAT SHEET */
 .mermaid-container {

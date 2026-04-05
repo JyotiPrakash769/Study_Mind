@@ -118,11 +118,31 @@ function toggleTheme() {
   drawChart(); // Redraw chart with new colors
 }
 
+function toggleMobileMode() {
+  const isMobile = document.body.classList.toggle('force-mobile');
+  localStorage.setItem('sm_mobile_mode', isMobile);
+  const btn = document.getElementById('device-toggle');
+  if (btn) {
+    btn.textContent = isMobile ? '💻' : '📱';
+    btn.title = isMobile ? 'Switch to Desktop View' : 'Switch to Mobile View';
+  }
+}
+
 // ── INIT ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('sm_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', savedTheme);
   document.getElementById('theme-toggle').textContent = savedTheme === 'light' ? '🌙' : '☀️';
+
+  const savedMobile = localStorage.getItem('sm_mobile_mode') === 'true';
+  const deviceBtn = document.getElementById('device-toggle');
+  if (savedMobile) {
+    document.body.classList.add('force-mobile');
+    if (deviceBtn) {
+      deviceBtn.textContent = '💻';
+      deviceBtn.title = 'Switch to Desktop View';
+    }
+  }
 
   const savedProvider = localStorage.getItem('sm_provider') || 'groq';
   setProvider(savedProvider);

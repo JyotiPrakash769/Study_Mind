@@ -33,7 +33,7 @@ const State = {
 const BLOOM = {
   remember:   { label: 'Remember',   color: '#60a5fa', cls: 'bloom-remember'   },
   understand: { label: 'Understand', color: '#a78bfa', cls: 'bloom-understand' },
-  apply:      { label: 'Apply',      color: '#4ade80', cls: 'bloom-apply'      },
+  apply:      { label: 'Apply',      color: 'var(--primary)', cls: 'bloom-apply'      },
   analyze:    { label: 'Analyze',    color: '#fbbf24', cls: 'bloom-analyze'    },
   evaluate:   { label: 'Evaluate',   color: '#fb923c', cls: 'bloom-evaluate'   },
   create:     { label: 'Create',     color: '#f87171', cls: 'bloom-create'     },
@@ -43,8 +43,87 @@ function bloomBadge(level) {
   return `<span class="bloom-badge ${b.cls}">${b.label}</span>`;
 }
 
+
+
+// ── NOTION PANELS ─────────────────────────────────────────────
+let isLeftLocked = true;
+let isRightLocked = true;
+
+function toggleLeftLock() {
+  isLeftLocked = !isLeftLocked;
+  const sidebar = document.getElementById('sidebar-nav');
+  const trigger = document.getElementById('left-trigger');
+  const btn = document.getElementById('left-lock-btn');
+  
+  if (isLeftLocked) {
+    sidebar.className = 'sidebar-nav locked';
+    trigger.classList.add('hidden');
+    btn.textContent = '◀';
+  } else {
+    sidebar.className = 'sidebar-nav collapsed';
+    trigger.classList.remove('hidden');
+    btn.textContent = '▶';
+  }
+}
+
+function showLeftOverlay() {
+  if (!isLeftLocked) {
+    document.getElementById('sidebar-nav').className = 'sidebar-nav overlay';
+  }
+}
+
+function hideLeftOverlay() {
+  if (!isLeftLocked) {
+    document.getElementById('sidebar-nav').className = 'sidebar-nav collapsed';
+  }
+}
+
+function toggleRightLock() {
+  isRightLocked = !isRightLocked;
+  const panel = document.getElementById('app-main');
+  const trigger = document.getElementById('right-trigger');
+  const btn = document.getElementById('right-lock-btn');
+  
+  if (isRightLocked) {
+    panel.className = 'right-pane app-container locked';
+    trigger.classList.add('hidden');
+    btn.textContent = '▶';
+  } else {
+    panel.className = 'right-pane app-container collapsed';
+    trigger.classList.remove('hidden');
+    btn.textContent = '◀';
+  }
+}
+
+function showRightOverlay() {
+  if (!isRightLocked) {
+    document.getElementById('app-main').className = 'right-pane app-container overlay';
+  }
+}
+
+function hideRightOverlay() {
+  if (!isRightLocked) {
+    document.getElementById('app-main').className = 'right-pane app-container collapsed';
+  }
+}
+
+// ── THEME TOGGLE ─────────────────────────────────────────────
+
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const newTheme = isLight ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('sm_theme', newTheme);
+  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+  drawChart(); // Redraw chart with new colors
+}
+
 // ── INIT ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  const savedTheme = localStorage.getItem('sm_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  document.getElementById('theme-toggle').textContent = savedTheme === 'light' ? '🌙' : '☀️';
+
   const savedProvider = localStorage.getItem('sm_provider') || 'groq';
   setProvider(savedProvider);
   const saved = localStorage.getItem('sm_api_key');
@@ -515,7 +594,7 @@ Feedback should explain why the answer is right/wrong/partial in 1-2 sentences.`
 
 function renderResults(evaluation, totalScore, userAnswers) {
   const grade = totalScore >= 80 ? '🌟 Excellent!' : totalScore >= 60 ? '👍 Good Job!' : totalScore >= 40 ? '📚 Keep Practicing' : '💡 Review Needed';
-  const gradeColor = totalScore >= 80 ? '#4ade80' : totalScore >= 60 ? '#fbbf24' : '#f87171';
+  const gradeColor = totalScore >= 80 ? 'var(--primary)' : totalScore >= 60 ? '#fbbf24' : '#f87171';
 
   const html = `
     <div class="score-banner">
@@ -566,17 +645,17 @@ function drawChart() {
   ctx.clearRect(0, 0, W, H);
 
   // Grid
-  ctx.strokeStyle = 'rgba(74,222,128,0.08)';
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border").trim();
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = (H - 30) * (1 - i / 4) + 10;
     ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(W - 10, y); ctx.stroke();
-    ctx.fillStyle = '#4a7a58'; ctx.font = '10px Inter'; ctx.textAlign = 'right';
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-dim').trim(); ctx.font = '10px Inter'; ctx.textAlign = 'right';
     ctx.fillText(i * 25 + '%', 28, y + 4);
   }
 
   if (history.length < 2) {
-    ctx.fillStyle = '#4ade80'; ctx.beginPath();
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--primary').trim(); ctx.beginPath();
     ctx.arc(W / 2, H / 2, 5, 0, Math.PI * 2); ctx.fill();
     return;
   }
@@ -587,7 +666,7 @@ function drawChart() {
 
   // Gradient fill
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, 'rgba(74,222,128,0.25)'); grad.addColorStop(1, 'rgba(74,222,128,0)');
+  grad.addColorStop(0, getComputedStyle(document.body).getPropertyValue('--primary-glow2').trim()); grad.addColorStop(1, 'transparent');
   ctx.beginPath(); ctx.moveTo(pts[0].x, H - 20);
   pts.forEach(p => ctx.lineTo(p.x, p.y));
   ctx.lineTo(pts[pts.length - 1].x, H - 20); ctx.closePath();
@@ -596,13 +675,13 @@ function drawChart() {
   // Main line
   ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
   pts.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x, p.y); });
-  ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--primary').trim(); ctx.lineWidth = 2.5; ctx.stroke();
 
   // Dots
   pts.forEach((p, i) => {
     ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#4ade80'; ctx.fill();
-    ctx.fillStyle = '#e2ffe8'; ctx.font = 'bold 9px Inter'; ctx.textAlign = 'center';
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--primary').trim(); ctx.fill();
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg').trim(); ctx.font = 'bold 9px Inter'; ctx.textAlign = 'center';
     ctx.fillText(history[i] + '%', p.x, p.y - 8);
   });
 }
@@ -669,29 +748,88 @@ async function generateAdaptiveQuiz() {
 
 // ── STUDY PLAN ────────────────────────────────────────────────
 async function generateStudyPlan() {
-  showLoading('Creating your personalized study plan...');
-  const weakTopics = Object.entries(State.performance.topicScores)
-    .filter(([, s]) => { const a = Array.isArray(s) ? s : [s]; return Math.round(a.reduce((x,y)=>x+y,0)/a.length) < 60; })
-    .map(([t]) => t);
+  if (!State.docText) return showToast('Please analyze a document first!', true);
+  
+  const timeline = document.getElementById('sp-timeline').value;
+  const focus = document.getElementById('sp-focus').value;
+  const instructions = document.getElementById('sp-instructions').value;
 
-  const prompt = `Create a personalized 7-day study plan for a student studying: ${State.topics.join(', ')}.
-${weakTopics.length > 0 ? `Weak areas needing extra focus: ${weakTopics.join(', ')}.` : ''}
-Format as a clear day-by-day plan. For each day, specify:
-- Day number and theme
-- Topics to cover
-- Suggested activities (reading, practice, quiz)
-- Estimated time
-Make it realistic and encouraging.`;
+  document.getElementById('study-plan-output').classList.add('hidden');
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  document.getElementById('loading-text').textContent = 'Building your personalized timeline...';
 
   try {
-    const raw = await callAI(prompt, 1500);
-    document.getElementById('study-plan-content').innerHTML = formatMarkdown(raw);
-    hideLoading();
-  } catch (err) {
-    hideLoading();
-    showToast('❌ Error: ' + err.message);
+    const prompt = `You are an expert AI tutor. Create a highly structured study plan based on the document text.
+User Constraints:
+- Timeline: ${timeline}
+- Focus Area: ${focus}
+${instructions ? '- Custom Request: ' + instructions : ''}
+
+You MUST return the output EXACTLY in this JSON format (an array of day objects):
+[
+  {
+    "day": 1,
+    "title": "Introduction to Core Concepts",
+    "tasks": ["Read pages 1-5", "Summarize the primary definition", "Review flashcards"]
+  }
+]
+Do not return any markdown outside the JSON array. Output valid JSON only.
+
+Document Text limit:
+${State.docText.substring(0, 5000)}`;
+
+    const res = await callAI(prompt);
+    
+    // Attempt to parse json
+    let jsonMatch = res.match(/\[.*\]/s);
+    let planData = [];
+    if (jsonMatch) {
+       planData = JSON.parse(jsonMatch[0]);
+    } else {
+       planData = JSON.parse(res);
+    }
+    
+    renderStudyTimeline(planData);
+  } catch(e) {
+    showToast('Failed to generate study plan: ' + e.message, true);
+    console.error(e);
+  } finally {
+    document.getElementById('loading-overlay').classList.add('hidden');
   }
 }
+
+function renderStudyTimeline(planData) {
+  const container = document.getElementById('study-plan-output');
+  container.innerHTML = '<div class="timeline"></div>';
+  const timelineEl = container.querySelector('.timeline');
+  
+  planData.forEach(dayObject => {
+    let tasksHtml = '';
+    dayObject.tasks.forEach((task, idx) => {
+       const uId = `task-${dayObject.day}-${idx}`;
+       tasksHtml += `
+         <label class="timeline-task" for="${uId}">
+           <input type="checkbox" id="${uId}" class="timeline-cb" onclick="this.parentElement.classList.toggle('completed', this.checked)">
+           <div class="timeline-task-content">${task}</div>
+         </label>
+       `;
+    });
+
+    timelineEl.innerHTML += `
+      <div class="timeline-day">
+        <div class="timeline-dot"></div>
+        <div class="timeline-day-header">Day ${dayObject.day}</div>
+        <div class="timeline-day-title">${dayObject.title}</div>
+        <div class="timeline-tasks">
+          ${tasksHtml}
+        </div>
+      </div>
+    `;
+  });
+  
+  container.classList.remove('hidden');
+}
+
 
 // ── PRACTICE & REINFORCEMENT ──────────────────────────────────
 async function generatePractice() {

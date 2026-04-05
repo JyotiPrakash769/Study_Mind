@@ -7,7 +7,7 @@
   <meta name="description" content="Transform your study material into an interactive AI-powered learning experience with quizzes, summaries, adaptive learning, and a context-aware chatbot."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <link rel="stylesheet" href="style.css"/>
 </head>
@@ -18,6 +18,7 @@
 
   <!-- HEADER -->
   <header class="header">
+    <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">☀️</button>
     <div class="header-inner">
       <div class="logo">
         <span class="logo-icon">🧠</span>
@@ -103,24 +104,50 @@
 
   <!-- WORKSPACE SPLIT (shown after doc is loaded) -->
   <div id="workspace" class="workspace-split hidden">
+    
+
+    <!-- LEFT TRIGGER -->
+    <div class="panel-trigger left-trigger hidden" id="left-trigger" onmouseenter="showLeftOverlay()">
+      <span class="trigger-icon">☰</span>
+    </div>
+
+    <!-- SIDEBAR NAV -->
+    <aside class="sidebar-nav locked" id="sidebar-nav" onmouseleave="hideLeftOverlay()">
+      <div class="panel-header">
+        <span class="panel-title">Menu</span>
+        <button class="icon-btn" onclick="toggleLeftLock()" id="left-lock-btn" title="Close Sidebar">◀</button>
+      </div>
+      <nav id="app-nav" class="app-nav">
+
+        <button class="nav-tab active" data-tab="summary" onclick="switchTab('summary')">📋 Summary</button>
+        <button class="nav-tab" data-tab="quiz" onclick="switchTab('quiz')">🧠 Quiz</button>
+        <button class="nav-tab" data-tab="flashcards" onclick="switchTab('flashcards')">🃏 Flashcards</button>
+        <button class="nav-tab" data-tab="performance" onclick="switchTab('performance')">📊 Performance</button>
+        <button class="nav-tab" data-tab="studyplan" onclick="switchTab('studyplan')">🗓️ Study Plan</button>
+        <button class="nav-tab" data-tab="practice" onclick="switchTab('practice')">🔁 Practice</button>
+        <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chatbot</button>
+      </nav>
+    </aside>
+
     <!-- LEFT PANE: PDF VIEWER -->
     <div class="left-pane" id="pdf-pane">
       <div class="pdf-header">📄 <span id="pdf-title">Document Viewer</span></div>
       <iframe id="pdf-viewer" src="" frameborder="0" title="PDF Viewer"></iframe>
     </div>
 
+
+    <!-- RIGHT TRIGGER -->
+    <div class="panel-trigger right-trigger hidden" id="right-trigger" onmouseenter="showRightOverlay()">
+      <span class="trigger-icon">🛠</span>
+    </div>
+
     <!-- RIGHT PANE: STUDY TOOLS -->
-    <main id="app-main" class="right-pane app-container" style="max-width: none; margin: 0; padding-top: 1rem;">
-      <!-- NAVIGATION TABS (shown after doc is loaded) -->
-      <nav id="app-nav" class="app-nav">
-      <button class="nav-tab active" data-tab="summary" onclick="switchTab('summary')">📋 Summary</button>
-      <button class="nav-tab" data-tab="quiz" onclick="switchTab('quiz')">🧠 Quiz</button>
-      <button class="nav-tab" data-tab="flashcards" onclick="switchTab('flashcards')">🃏 Flashcards</button>
-      <button class="nav-tab" data-tab="performance" onclick="switchTab('performance')">📊 Performance</button>
-      <button class="nav-tab" data-tab="studyplan" onclick="switchTab('studyplan')">🗓️ Study Plan</button>
-      <button class="nav-tab" data-tab="practice" onclick="switchTab('practice')">🔁 Practice</button>
-      <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chatbot</button>
-    </nav>
+    <main id="app-main" class="right-pane app-container locked" style="max-width: none; margin: 0; padding-top: 0;" onmouseleave="hideRightOverlay()">
+      <div class="panel-header" id="right-panel-header">
+        <span class="panel-title">Study Tools</span>
+        <button class="icon-btn" onclick="toggleRightLock()" id="right-lock-btn" title="Close Tools">▶</button>
+      </div>
+
 
     <!-- TAB: SUMMARY -->
     <section id="tab-summary" class="tab-panel hidden">
@@ -195,11 +222,39 @@
     <!-- TAB: STUDY PLAN -->
     <section id="tab-studyplan" class="tab-panel hidden">
       <div class="card">
-        <div class="card-title-row">
-          <h3>🗓️ Personalized Study Plan</h3>
-          <button class="btn btn-primary btn-sm" onclick="generateStudyPlan()">Generate Plan</button>
+        <div class="card-header">
+          <h2>🧭 Study Plan Configuration</h2>
         </div>
-        <div id="study-plan-content" class="prose-content">Click "Generate Plan" to create your personalized roadmap.</div>
+        <p class="prose-content" style="margin-bottom: 1rem;">Tell the AI exactly how you want to study this document.</p>
+        
+        <div class="setting-group" style="margin-bottom: 1rem;">
+          <label>Timeline</label>
+          <select id="sp-timeline" class="api-input" style="width: 100%;">
+             <option value="1 Day (Cramming)">1 Day (Cramming)</option>
+             <option value="3 Days (Standard)" selected>3 Days (Standard)</option>
+             <option value="7 Days (Deep Dive)">7 Days (Deep Dive)</option>
+          </select>
+        </div>
+
+        <div class="setting-group" style="margin-bottom: 1rem;">
+          <label>Focus Area</label>
+          <select id="sp-focus" class="api-input" style="width: 100%;">
+             <option value="Balanced overview of all topics">Balanced overview of all topics</option>
+             <option value="Prioritize my weak topics based on quizzes">Prioritize my weak topics based on quizzes</option>
+             <option value="Strictly formulas, definitions, and code">Strictly formulas, definitions, and code</option>
+          </select>
+        </div>
+
+        <div class="setting-group" style="margin-bottom: 1.5rem;">
+          <label>Custom Instructions (Optional)</label>
+          <textarea id="sp-instructions" class="text-area" style="min-height: 80px;" placeholder="e.g. 'Explain it to me like I am 5 years old', 'Include lots of practice questions'"></textarea>
+        </div>
+
+        <button class="btn btn-primary btn-lg" style="width:100%; justify-content:center;" onclick="generateStudyPlan()">Generate Personalized Plan</button>
+      </div>
+
+      <div id="study-plan-output" class="hidden">
+         <!-- Timeline injected here -->
       </div>
     </section>
 

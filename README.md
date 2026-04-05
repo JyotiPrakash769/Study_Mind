@@ -13,15 +13,7 @@
 
 </div>
 
----
 
-## 🎬 Demo Video
-
-> Click the image below to watch a live demo of StudyMind in action.
-
-![StudyMind Demo](assets/demo.webp)
-
----
 
 ## 📖 About
 
@@ -149,8 +141,7 @@ Study_Mind/
 ├── style.css        # Premium dark green theme
 ├── app.js           # All AI logic & 9 features
 ├── assets/
-│   ├── screenshot.png   # App screenshot
-│   └── demo.webp        # Demo recording
+│   └── split_screen.png   # App screenshot
 └── README.md
 ```
 

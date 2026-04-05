@@ -9,6 +9,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
@@ -83,9 +86,14 @@
       <div id="drop-zone" class="drop-zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
         <div class="drop-icon">📄</div>
         <h3>Drop your study material here</h3>
-        <p class="drop-sub">PDF or plain text (.txt) — lectures, notes, textbooks, articles</p>
+        <p class="drop-sub">PDF, DOCX, or plain text (.txt) — lectures, notes, textbooks, articles</p>
         <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📂 Browse Files</button>
-        <input type="file" id="file-input" accept=".pdf,.txt" style="display:none" onchange="handleFileSelect(event)"/>
+        <input type="file" id="file-input" accept=".pdf,.txt,.docx" style="display:none" onchange="handleFileSelect(event)"/>
+      </div>
+      <div class="divider"><span>or Paste YouTube Link</span></div>
+      <div style="display:flex; gap:0.5rem; margin-bottom: 1.5rem;">
+        <input type="text" id="yt-input" class="api-input" style="flex:1" placeholder="https://youtube.com/watch?v=..."/>
+        <button class="btn btn-outline" onclick="loadYouTube()">▶ Extract Video</button>
       </div>
       <div class="divider"><span>or paste text directly</span></div>
       <textarea id="text-input" class="text-area" placeholder="Paste your notes, chapter, article, or any study material here..."></textarea>
@@ -124,6 +132,7 @@
         <button class="nav-tab" data-tab="flashcards" onclick="switchTab('flashcards')">🃏 Flashcards</button>
         <button class="nav-tab" data-tab="performance" onclick="switchTab('performance')">📊 Performance</button>
         <button class="nav-tab" data-tab="studyplan" onclick="switchTab('studyplan')">🗓️ Study Plan</button>
+        <button class="nav-tab" data-tab="mindmap" onclick="switchTab('mindmap')">🗺️ Mind Map</button>
         <button class="nav-tab" data-tab="practice" onclick="switchTab('practice')">🔁 Practice</button>
         <button class="nav-tab" data-tab="chat" onclick="switchTab('chat')">💬 Chatbot</button>
       </nav>
@@ -153,9 +162,12 @@
     <section id="tab-summary" class="tab-panel hidden">
       <div class="panel-grid">
         <div class="card">
-          <div class="card-title-row">
+                    <div class="card-title-row">
             <h3>📋 Document Summary</h3>
-            <button class="btn btn-outline btn-sm" onclick="speakSummary()" id="voice-btn">🔊 Listen</button>
+            <div style="display:flex; gap: 0.5rem">
+              <button class="btn btn-outline btn-sm" onclick="exportCheatSheet()" id="export-btn">🖨️ Cheat Sheet</button>
+              <button class="btn btn-outline btn-sm" onclick="speakSummary()" id="voice-btn">🔊 Listen</button>
+            </div>
           </div>
           <div id="summary-content" class="prose-content">Generating summary...</div>
         </div>
@@ -255,6 +267,20 @@
 
       <div id="study-plan-output" class="hidden">
          <!-- Timeline injected here -->
+      </div>
+    </section>
+
+    <!-- TAB: MIND MAP -->
+    <section id="tab-mindmap" class="tab-panel hidden">
+      <div class="card">
+        <div class="card-title-row">
+          <h3>🗺️ AI Concept Map</h3>
+          <button class="btn btn-primary btn-sm" onclick="generateMindMap()">Generate Map</button>
+        </div>
+        <p class="prose-content" style="margin-bottom:1rem">Visualize the relationships between key topics in an interactive graph.</p>
+        <div id="mermaid-container" class="mermaid-container">
+          <div class="prose-content" style="text-align:center;color:var(--text-muted);opacity:0.6;width:100%">Click generate to build the mind map.</div>
+        </div>
       </div>
     </section>
 

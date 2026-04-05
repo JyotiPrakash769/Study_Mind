@@ -132,7 +132,12 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('api-key-input').value = saved;
     showKeyStatus('✅ API key loaded from storage', 'success');
   }
-  loadState();   // restore performance & SRS from previous sessions
+  loadState();
+// ── ADVANCED INIT ──────────────────────────────────────────────
+if (typeof mermaid !== 'undefined') {
+  mermaid.initialize({ startOnLoad: false, theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark' });
+}
+
   setupDragDrop();
 });
 
@@ -318,6 +323,33 @@ async function processFile(file) {
       hideLoading();
       showToast('❌ Error reading PDF: ' + err.message);
     }
+  } else if (file.name.endsWith('.docx')) {
+    showLoading('Extracting content from Word Document...');
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const arrayBuffer = e.target.result;
+        
+        // 1. Extract raw text for AI
+        const txtRes = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+        document.getElementById('text-input').value = txtRes.value.trim();
+        
+        // 2. Extract HTML for the viewer
+        const htmlRes = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+        
+        // Render in left pane
+        const pane = document.getElementById('pdf-pane');
+        pane.innerHTML = `<div class="pdf-header">📄 <span id="pdf-title">${escapeHtml(file.name)}</span></div>
+                          <div class="docx-viewer">${htmlRes.value}</div>`;
+        
+        hideLoading();
+        showToast(`✅ Loaded Word Document`);
+      } catch(err) {
+        hideLoading();
+        showToast('❌ Error reading DOCX: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   } else if (file.name.endsWith('.txt')) {
     const reader = new FileReader();
     reader.onload = (e) => { document.getElementById('text-input').value = e.target.result; };
@@ -1202,3 +1234,157 @@ function updateDots() {
   ).join('');
 }
 
+
+
+
+// ══════════════════════════════════════════════════════════════
+// ADVANCED FEATURES (YouTube, MindMap, Cheat Sheet)
+// ══════════════════════════════════════════════════════════════
+
+// ── 1. YOUTUBE INGESTION ──
+function extractYouTubeID(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
+  return match ? match[1] : null;
+}
+
+async function loadYouTube() {
+  const url = document.getElementById('yt-input').value.trim();
+  const rawVid = extractYouTubeID(url);
+  if (!rawVid) return showToast('⚠️ Please enter a valid YouTube URL');
+  if (!State.apiKey) return showToast('⚠️ Please save your API key first!');
+
+  // Replace PDF viewer with YT Embed
+  const viewer = document.getElementById('pdf-viewer');
+  viewer.src = `https://www.youtube-nocookie.com/embed/${rawVid}?rel=0`;
+  viewer.setAttribute('allow', 'encrypted-media; picture-in-picture; web-share');
+  viewer.setAttribute('allowfullscreen', 'true');
+  document.getElementById('pdf-title').innerHTML = `📺 YouTube Lecture Mode`;
+  
+  showLoading('Fetching YouTube Transcript...');
+  try {
+    // There is no native CORS-free browser API for YT transcripts. We will try a public proxy or fallback.
+    const proxy = `https://youtube-browser-api.onrender.com/transcript?videoId=${rawVid}`;
+    
+    // As a fail-safe for browser-only apps, we simulate extraction failure so they paste the transcript 
+    // OR we can pass the URL raw to Gemini directly (Gemini 1.5 Flash natively supports grounding but our REST endpoint requires the video file).
+    // We will attempt to ask the AI to summarize based on the URL. If the model has search grounding, it works!
+    let fallbackText = `Here is a YouTube Video Link: ${url}. Please analyze this video.`;
+    State.docText = fallbackText;
+    
+    document.getElementById('setup-container').classList.add('hidden');
+    document.getElementById('workspace').classList.remove('hidden');
+    switchTab('summary');
+    hideLoading();
+    
+    showToast('⚠️ Video Embed active! To get perfect AI quizzes, please PASTE the transcript text into the app, as browsers block auto-downloading subtitles.', 8000);
+    
+    // We run loadDocument implicitly with the link text just to prep the UI
+    document.getElementById('text-input').value = `[YouTube Video Mode Active]\nURL: ${url}\nNote: To get accurate quizzes, please manually copy-paste the video transcript here.`;
+    
+  } catch (err) {
+    hideLoading();
+    showToast('❌ Failed to process YouTube. ' + err.message);
+  }
+}
+
+// ── 2. MIND MAP (Mermaid) ──
+async function generateMindMap() {
+  if (!State.docText) return showToast('Please load a document first');
+  const container = document.getElementById('mermaid-container');
+  
+  showLoading('Drawing your Mind Map...');
+  const prompt = `You are an expert system architect. Read the study material and build a Mermaid.js diagram (graph TD) connecting the core overarching concepts together.
+Only output the valid Mermaid code block, nothing else. Do not use quotes or special characters inside node names. Keep node names short (1-3 words).
+
+Example format:
+graph TD
+  A[Machine Learning] --> B[Supervised]
+  A --> C[Unsupervised]
+
+MATERIAL:
+${State.docText.substring(0, 4000)}`;
+
+  try {
+    const raw = await callAI(prompt, 1000);
+    // Extract everything between ```mermaid and ``` or just assume it is the string
+    let mermaidCode = raw.replace(/```(mermaid)?/g, '').trim();
+    
+    container.innerHTML = '<div class="mermaid" id="graphDiv"></div>';
+    
+    // Re-init theme based on toggle
+    const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark';
+    mermaid.initialize({ startOnLoad: false, theme });
+
+    const { svg } = await mermaid.render('graphDiv', mermaidCode);
+    container.innerHTML = svg;
+    
+    hideLoading();
+    showToast('✨ Mind map generated!');
+  } catch (err) {
+    hideLoading();
+    showToast('❌ Diagram generation failed: ' + err.message);
+    console.error(err);
+  }
+}
+
+// ── 3. CHEAT SHEET EXPORT (html2pdf) ──
+function exportCheatSheet() {
+  if (!State.extractedText && !State.docText) return showToast('Please load a document and generate a summary first!');
+  
+  showLoading('Compiling PDF Cheat Sheet...');
+  
+  // Build an invisible DOM element formatted perfectly for printing
+  const element = document.createElement('div');
+  element.id = 'print-template';
+  
+  const sumHtml = document.getElementById('summary-content').innerHTML;
+  const weakTopics = Object.keys(State.performance.topicScores).slice(0,5).join(', ') || 'No weak topics yet (Take a quiz!)';
+  
+  // Grab top flashcards
+  let fcHtml = '<ul>';
+  State.flashcards.slice(0, 5).forEach(fc => {
+    fcHtml += `<li style="margin-bottom:10px"><strong>Q:</strong> ${escapeHtml(fc.question)}<br/><strong>A:</strong> ${escapeHtml(fc.answer)}</li>`;
+  });
+  fcHtml += '</ul>';
+  if(State.flashcards.length === 0) fcHtml = '<p>Generate Flashcards first!</p>';
+
+  element.innerHTML = `
+    <div style="font-family: Arial, sans-serif; color: #111;">
+      <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">StudyMind Cheat Sheet</h1>
+      
+      <h2 style="color: #333; margin-top: 30px;">Overview Summary</h2>
+      <div style="font-size: 14px; line-height: 1.6;">${sumHtml}</div>
+      
+      <h2 style="color: #333; margin-top: 30px;">Priority Review Topics</h2>
+      <p style="font-size: 14px; color: #d97706; font-weight: bold;">${weakTopics}</p>
+      
+      <h2 style="color: #333; margin-top: 30px;">Core Flashcards</h2>
+      <div style="font-size: 14px; line-height: 1.6;">${fcHtml}</div>
+      
+      <div style="margin-top: 50px; text-align: center; font-size: 12px; color: #888;">
+        Generated by StudyMind AI
+      </div>
+    </div>
+  `;
+  document.body.appendChild(element);
+  
+  // Call html2pdf
+  element.style.display = 'block'; // make visible for render
+  const opt = {
+    margin:       0.5,
+    filename:     'StudyMind_CheatSheet.pdf',
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2 },
+    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+  };
+  
+  html2pdf().set(opt).from(element).save().then(() => {
+    document.body.removeChild(element);
+    hideLoading();
+    showToast('📥 Cheat Sheet Downloaded Successfully!');
+  }).catch(e => {
+    document.body.removeChild(element);
+    hideLoading();
+    showToast('❌ Export failed: ' + e.message);
+  });
+}

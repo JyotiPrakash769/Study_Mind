@@ -73,7 +73,7 @@
       </div>
 
       <div class="api-input-row">
-        <input type="password" id="api-key-input" placeholder="Paste your Groq API key here (gsk_...)" class="api-input"/>
+        <input type="password" id="api-key-input" placeholder="Paste your Groq API key here (gsk_...)" class="api-input" onkeydown="if(event.key==='Enter') saveApiKey()"/>
         <button id="show-key-btn" class="btn btn-outline" onclick="toggleKey()">Show</button>
         <button id="save-key-btn" class="btn btn-primary" onclick="saveApiKey()">Save Key →</button>
       </div>
@@ -95,6 +95,7 @@
         <input type="text" id="yt-input" class="api-input" style="flex:1" placeholder="https://youtube.com/watch?v=..."/>
         <button class="btn btn-outline" onclick="loadYouTube()">▶ Extract Video</button>
       </div>
+      <ul id="doc-upload-list" class="doc-list" style="list-style:none; padding:0; margin: 1rem 0; text-align:left;"></ul>
       <div class="divider"><span>or paste text directly</span></div>
       <textarea id="text-input" class="text-area" placeholder="Paste your notes, chapter, article, or any study material here..."></textarea>
       <div class="upload-actions">
@@ -139,11 +140,17 @@
     </aside>
 
     <!-- LEFT PANE: PDF VIEWER -->
-    <div class="left-pane" id="pdf-pane">
-      <div class="pdf-header">📄 <span id="pdf-title">Document Viewer</span></div>
-      <iframe id="pdf-viewer" src="" frameborder="0" title="PDF Viewer"></iframe>
+        <div class="left-pane" id="pdf-pane">
+      <div class="pdf-header" style="justify-content: flex-start; gap: 0.5rem; display:flex; align-items:center;">
+        📄 <select id="doc-switcher" class="api-input" style="flex:1; max-width:300px; padding:0.2rem; min-height:30px; font-size:0.9rem" onchange="switchDocumentView()">
+          <option value="">No documents loaded</option>
+        </select>
+      </div>
+      <div id="viewer-container" style="flex:1; width:100%; display:flex; flex-direction:column; overflow:hidden">
+        <iframe id="pdf-viewer" src="" frameborder="0" title="PDF Viewer" style="width:100%;height:100%; display:none;"></iframe>
+        <div id="docx-viewer-container" class="docx-viewer" style="display:none; width:100%; height:100%;"></div>
+      </div>
     </div>
-
 
     <!-- RIGHT TRIGGER -->
     <div class="panel-trigger right-trigger hidden" id="right-trigger" onmouseenter="showRightOverlay()">

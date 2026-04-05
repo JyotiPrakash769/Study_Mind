@@ -12,7 +12,7 @@ if (typeof pdfjsLib !== 'undefined') {
 const State = {
   apiKey: '',
   provider: 'groq',
-  fileBlobUrl: null,
+  documents: [], // new multi-doc array
   docText: '',
   topics: [],
   difficulty: 'basic',
@@ -239,7 +239,7 @@ async function callAI(prompt, maxTokens = 2048) {
 async function callGroq(prompt, maxTokens = 2048) {
   const url = 'https://api.groq.com/openai/v1/chat/completions';
   const body = {
-    model: 'llama-3.3-70b-versatile',
+    model: 'llama-3.1-8b-instant',
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
     temperature: 0.7,
@@ -295,30 +295,64 @@ function handleFileSelect(e) {
   if (file) processFile(file);
 }
 
+function switchDocumentView() {
+  const switchId = document.getElementById('doc-switcher').value;
+  const doc = State.documents.find(d => d.id === switchId);
+  const iframe = document.getElementById('pdf-viewer');
+  const docxContainer = document.getElementById('docx-viewer-container');
+  
+  iframe.style.display = 'none';
+  docxContainer.style.display = 'none';
+  iframe.src = '';
+  
+  if (!doc) return;
+  
+  if (doc.type === 'pdf' || doc.type === 'youtube') {
+    iframe.src = doc.blobUrl || doc.embedUrl;
+    iframe.style.display = 'block';
+  } else if (doc.type === 'docx') {
+    docxContainer.innerHTML = doc.htmlView || '';
+    docxContainer.style.display = 'block';
+  }
+}
+
+function updateDocUI() {
+  const list = document.getElementById('doc-upload-list');
+  list.innerHTML = State.documents.map(d => `
+    <li class="doc-list-item">
+      <span>📄 ${escapeHtml(d.name)}</span>
+      <span class="doc-list-badge">${d.type.toUpperCase()}</span>
+    </li>
+  `).join('');
+  
+  const switcher = document.getElementById('doc-switcher');
+  switcher.innerHTML = State.documents.map(d => `<option value="${d.id}">${escapeHtml(d.name)}</option>`).join('');
+  if(State.documents.length) switchDocumentView();
+}
+
 async function processFile(file) {
   const info = document.getElementById('file-info');
-  info.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+  info.textContent = `Adding ${file.name}...`;
   info.classList.remove('hidden');
+  
+  const docId = 'doc_' + Date.now() + '_' + Math.floor(Math.random()*1000);
 
   if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
     showLoading('Extracting text from PDF...');
     try {
-      if (State.fileBlobUrl) URL.revokeObjectURL(State.fileBlobUrl);
-      State.fileBlobUrl = URL.createObjectURL(file);
-      document.getElementById('pdf-title').textContent = file.name;
-      document.getElementById('pdf-viewer').src = State.fileBlobUrl + '#navpanes=0&toolbar=0&view=FitH';
-
+      const blobUrl = URL.createObjectURL(file);
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-      let text = '';
+      let text = `[--- DOCUMENT: ${file.name} ---]
+`;
       for (let i = 1; i <= Math.min(pdf.numPages, 40); i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += `\n[--- PAGE ${i} ---]\n` + content.items.map(item => item.str).join(' ') + '\n';
+        text += `[PAGE ${i}] ` + content.items.map(item => item.str).join(' ') + '\\n';
       }
-      document.getElementById('text-input').value = text.trim();
+      State.documents.push({ id: docId, name: file.name, type: 'pdf', rawText: text, blobUrl });
       hideLoading();
-      showToast(`✅ Extracted ${pdf.numPages} page(s) from PDF`);
+      showToast(`✅ Added PDF: ${file.name}`);
     } catch (err) {
       hideLoading();
       showToast('❌ Error reading PDF: ' + err.message);
@@ -329,43 +363,51 @@ async function processFile(file) {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target.result;
+        const txtRes = await mammoth.extractRawText({ arrayBuffer });
+        const htmlRes = await mammoth.convertToHtml({ arrayBuffer });
         
-        // 1. Extract raw text for AI
-        const txtRes = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-        document.getElementById('text-input').value = txtRes.value.trim();
-        
-        // 2. Extract HTML for the viewer
-        const htmlRes = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-        
-        // Render in left pane
-        const pane = document.getElementById('pdf-pane');
-        pane.innerHTML = `<div class="pdf-header">📄 <span id="pdf-title">${escapeHtml(file.name)}</span></div>
-                          <div class="docx-viewer">${htmlRes.value}</div>`;
-        
+        let text = `[--- DOCUMENT: ${file.name} ---]
+` + txtRes.value.trim();
+        State.documents.push({ id: docId, name: file.name, type: 'docx', rawText: text, htmlView: htmlRes.value });
         hideLoading();
-        showToast(`✅ Loaded Word Document`);
+        showToast(`✅ Added Word Document`);
+        updateDocUI();
       } catch(err) {
         hideLoading();
         showToast('❌ Error reading DOCX: ' + err.message);
       }
     };
     reader.readAsArrayBuffer(file);
+    return; // reader is async
   } else if (file.name.endsWith('.txt')) {
     const reader = new FileReader();
-    reader.onload = (e) => { document.getElementById('text-input').value = e.target.result; };
+    reader.onload = (e) => { 
+      let text = `[--- DOCUMENT: ${file.name} ---]
+` + e.target.result;
+      State.documents.push({ id: docId, name: file.name, type: 'txt', rawText: text });
+      updateDocUI();
+      showToast('✅ Text file added');
+    };
     reader.readAsText(file);
-    showToast('✅ Text file loaded');
+    return;
   } else {
-    showToast('⚠️ Please upload a PDF or .txt file');
+    showToast('⚠️ Supported files: PDF, DOCX, TXT');
   }
+  updateDocUI();
 }
 
 async function loadDocument() {
-  const text = document.getElementById('text-input').value.trim();
-  if (!text || text.length < 50) { showToast('⚠️ Please add some study material first.'); return; }
+  let aggregateText = State.documents.map(d => d.rawText).join('\\n\\n');
+  const manualText = document.getElementById('text-input').value.trim();
+  if (manualText && !manualText.includes('[YouTube')) {
+    aggregateText += '\\n\\n[--- MANUALLY PASTED TEXT ---]\\n' + manualText;
+  }
+  
+  if (!aggregateText || aggregateText.length < 50) { showToast('⚠️ Please upload documents or add text first.'); return; }
   if (!State.apiKey) { showToast('⚠️ Please save your API key first!'); return; }
 
-  State.docText = text;
+  State.docText = aggregateText;
+
   document.getElementById('load-doc-btn').disabled = true;
   showLoading('Analyzing your document with AI...');
 
@@ -379,7 +421,7 @@ Return ONLY valid JSON in this exact format:
 {"summary": "...", "topics": ["topic1", "topic2", ...]}
 
 STUDY MATERIAL:
-${text.substring(0, 6000)}`;
+${State.docText.substring(0, 6000)}`;
 
     const raw = await callAI(prompt, 1024);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
@@ -902,7 +944,9 @@ function appendChat(msg, role) {
   div.className = `chat-msg ${role}`;
   div.innerHTML = role === 'bot' ? formatMarkdown(msg) : escapeHtml(msg);
   container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+  setTimeout(() => {
+    container.scrollTop = container.scrollHeight;
+  }, 10);
   return div;
 }
 
@@ -1254,12 +1298,13 @@ async function loadYouTube() {
   if (!State.apiKey) return showToast('⚠️ Please save your API key first!');
 
   // Replace PDF viewer with YT Embed
-  const viewer = document.getElementById('pdf-viewer');
-  viewer.src = `https://www.youtube-nocookie.com/embed/${rawVid}?rel=0`;
-  viewer.setAttribute('allow', 'encrypted-media; picture-in-picture; web-share');
-  viewer.setAttribute('allowfullscreen', 'true');
-  document.getElementById('pdf-title').innerHTML = `📺 YouTube Lecture Mode`;
-  
+  const docId = 'yt_' + Date.now();
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${rawVid}?rel=0`;
+  State.documents.push({ id: docId, name: 'YouTube Lecture', type: 'youtube', embedUrl, rawText: `[--- YOUTUBE REFERENCE URL: ${url} ---]
+` });
+  updateDocUI();
+  document.getElementById('doc-switcher').value = docId;
+  switchDocumentView();
   showLoading('Fetching YouTube Transcript...');
   try {
     // There is no native CORS-free browser API for YT transcripts. We will try a public proxy or fallback.
@@ -1293,7 +1338,9 @@ async function generateMindMap() {
   const container = document.getElementById('mermaid-container');
   
   showLoading('Drawing your Mind Map...');
-  const prompt = `You are an expert system architect. Read the study material and build a Mermaid.js diagram (graph TD) connecting the core overarching concepts together.
+  const prompt = `You are a data scientist constructing a Cross-Document Knowledge Graph. Read the provided study material (which may contain multiple distinct documents). 
+Build a Mermaid.js diagram (graph TD) connecting the core overarching concepts together. 
+CRITICALLY: Explicitly draw node connections spanning across topics to show how different documents interlock and relate to each other.
 Only output the valid Mermaid code block, nothing else. Do not use quotes or special characters inside node names. Keep node names short (1-3 words).
 
 Example format:
